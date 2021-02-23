@@ -2,6 +2,7 @@ require("dotenv").config();
 const User = require("../models/User");
 const Product = require("../models/Product");
 const Client = require("../models/Client");
+const Order = require("../models/Order");
 const bcryptjs = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 
@@ -198,6 +199,44 @@ const resolvers = {
       } catch (error) {
         console.log(error);
       }
+    },
+    newOrder: async (_, { input }, ctx) => {
+      const { userID } = ctx;
+      const { client, order } = input;
+      // check client exist
+      let clientExist = await Client.findById(client);
+      if (!clientExist) {
+        throw new Error("Client does not exist");
+      }
+      // check client belogs to user
+      if (userID !== clientExist.salesman.toString()) {
+        throw new Error("Not Authorized");
+      }
+      // check stock
+      for await (const product of order) {
+        const { id } = product;
+
+        const productStock = await Product.findById(id);
+
+        if (product.amount > productStock.stock) {
+          throw new Error(
+            `Product: ${productStock.name} does not have enough units.`
+          );
+        } else {
+          // update Stock
+          productStock.stock = productStock.stock - product.amount;
+          await productStock.save();
+        }
+      }
+      //Create order
+      const newOrder = new Order(input);
+
+      // assign a seller
+      newOrder.user = userID;
+
+      // save database
+      const result = await newOrder.save();
+      return result;
     },
   },
 };
